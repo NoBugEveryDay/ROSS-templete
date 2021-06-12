@@ -30,7 +30,7 @@ clean :
 run : all
 	@mkdir -p $(RUN_DIR)
 	cd $(RUN_DIR) && \
-	mpirun -n 4 $(EXECUABLE) \
+	mpirun -n 32 $(EXECUABLE) \
 		`# Basic Setting` \
 			--report-interval=0.1 `# report every 10%` \
 			--clock-rate=2700000000 `# Set CPU frequency for timming` \
@@ -39,9 +39,10 @@ run : all
 			--nkp=4 `# num of kernel process in each process` \
 			--gvt-interval=100 `# the amount of real time in milliseconds between GVT computations for --synch=5` \
 		`# Simulation Setting` \
-			--end=1000 `# End time for Simulation` \
+			--end=10000 `# End time for Simulation` \
 			--extramem=1000000 `# Enlarge it untill no extramem errors` \
 		`# User parameter` \
 			--switch_port_num=1024 \
-			--switch_input_buffer_size=4 \
+			--switch_load=0.5 \
+			--sampling_step=1000 \
 		`# End of parameter`

@@ -24,9 +24,15 @@
  *              ↓
  * 0.7 - 0.8 :	MSG_ACCEPT
  * 
- *       0.9 :	MSG_CLEAN_PREPARE
+ *       0.9 :	MSG_COUNT_WAITING
+ * 
+ *       0.98:	MSG_SAMPLING_TRIGGER
  *              ↓
- * 0.9 - 0.95 :	MSG_CLEAN
+ * 0.98- 0.99:	MSG_SAMPLING_PREPARE
+ * 
+ *       1.0 :	MSG_SAMPLING
+ *              ↓
+ * 1.0 - 1.01:	MSG_SAMPLING_CLEAN
 */
 
 //Helper Functions
@@ -64,7 +70,8 @@ void inport_init(inport_state *s, tw_lp *lp) {
 	s->num_in_type = lp_num_in_type[lp->gid];
 
 	s->package_generated = 0;
-	s->package_loss = 0;
+	s->package_waiting = 0;
+	s->total_avg_package_waiting = 0;
 	s->last_accept = -1;
 	s->input_queue = (int*)malloc(sizeof(int)*switch_port_num);
 	s->granter = (char*)malloc(sizeof(char)*switch_port_num);
@@ -75,15 +82,18 @@ void inport_init(inport_state *s, tw_lp *lp) {
 
 	send_event(lp->gid, 0.1, lp, MSG_GENERATE, -1, -1);
 	send_event(lp->gid, 0.6, lp, MSG_ACCEPT_TRIGGER, -1, s->last_accept);
+	send_event(lp->gid, 0.9, lp, MSG_COUNT_WAITING, -1, s->total_avg_package_waiting);
 
-	send_event(lp->gid, sampling_step-0.02, lp, MSG_SAMPLING_TRIGGER, find_type_lp[s->typeid][0], -1);
-	if (lp->gid == find_type_lp[s->typeid][0]) {
-		s->reduce = (long long*)malloc(sizeof(long long)*2);
-		s->reduce[0] = 0; s->reduce[1] = 0;
-		send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, -1, -1);
-	}
-	else {
-		s->reduce = NULL;
+	if (sampling_step > 0) {
+		send_event(lp->gid, sampling_step-0.02, lp, MSG_SAMPLING_TRIGGER, find_type_lp[s->typeid][0], -1);
+		if (lp->gid == find_type_lp[s->typeid][0]) {
+			s->reduce = (long long*)malloc(sizeof(long long)*2);
+			s->reduce[0] = 0; s->reduce[1] = 0;
+			send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, -1, -1);
+		}
+		else {
+			s->reduce = NULL;
+		}
 	}
 }
 
@@ -109,30 +119,23 @@ void inport_event(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
 	// FGN_PRINT_INT("in_msg->type", in_msg->type);
 
 	if (in_msg->type == MSG_GENERATE) {
-		s->package_generated++;
-		int dest_outport = tw_rand_integer(lp->rng, 0, switch_port_num-1);
-		if (s->input_queue[dest_outport] == switch_input_buffer_size) {
-			// To set s->package_loss++;
-			send_event(lp->gid, 0.1, lp, MSG_ARRIVE, -1, -1);
-		}
-		else {
-			// To set s->input_queue[dest_outport]++;
+		double rand_probability = tw_rand_unif(lp->rng);
+		if (switch_load > rand_probability) {
+			int dest_outport = tw_rand_integer(lp->rng, 0, switch_port_num-1);
 			send_event(lp->gid, 0.1, lp, MSG_ARRIVE, dest_outport, -1);
 		}
-
+		else {
+			tw_rand_unif(lp->rng);
+		}
 		send_event(lp->gid, 1, lp, MSG_GENERATE, -1, -1);
 	}
 	else if (in_msg->type == MSG_ARRIVE) {
 		int dest_outport = in_msg->content;
-
-		if (dest_outport >= 0) {
-			s->input_queue[dest_outport]++;
-			int dest_gid = find_type_lp[OUTPORT_TYPE][dest_outport];
-			send_event(dest_gid, 0.1, lp, MSG_REQUEST, s->num_in_type, -1);
-		}
-		else {
-			s->package_loss++;
-		}
+		s->package_generated++;
+		s->package_waiting++;
+		s->input_queue[dest_outport]++;
+		int dest_gid = find_type_lp[OUTPORT_TYPE][dest_outport];
+		send_event(dest_gid, 0.1, lp, MSG_REQUEST, s->num_in_type, -1);
 	}
 	else if (in_msg->type == MSG_GRANT) {
 		int granter = in_msg->content;
@@ -159,10 +162,15 @@ void inport_event(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
 		int accept_port = in_msg->content;
 		s->input_queue[accept_port]--;
 		s->last_accept = accept_port;
+		s->package_waiting--;
+	}
+	else if (in_msg->type == MSG_COUNT_WAITING) {
+		s->total_avg_package_waiting += s->package_waiting;
+		send_event(lp->gid, 1, lp, MSG_COUNT_WAITING, -1, s->total_avg_package_waiting);
 	}
 	else if (in_msg->type == MSG_SAMPLING_TRIGGER) {
 		int dest_gid = in_msg->content;
-		send_event(dest_gid, 0.01, lp, MSG_SAMPLING_PREPARE, s->package_loss, s->package_generated);
+		send_event(dest_gid, 0.01, lp, MSG_SAMPLING_PREPARE, s->total_avg_package_waiting, s->package_generated);
 		send_event(dest_gid, sampling_step, lp, MSG_SAMPLING_TRIGGER, dest_gid, -1);
 	}
 	else if (in_msg->type == MSG_SAMPLING_PREPARE) {
@@ -170,7 +178,7 @@ void inport_event(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
 		s->reduce[1] += in_msg->history;
 	}
 	else if (in_msg->type == MSG_SAMPLING) {
-		tw_output(lp, "Loss @ %lf : %lf%%\n", tw_now(lp), (double)s->reduce[0]/s->reduce[1]*100);
+		tw_output(lp, "Avg Cell Latency @ %lf : %lf\n", tw_now(lp), (double)s->reduce[0]/(double)s->reduce[1]);
 		send_event(lp->gid, 0.01, lp, MSG_SAMPLING_CLEAN, (double)s->reduce[0], s->reduce[1]);
 		send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, -1, -1);
 	}
@@ -191,18 +199,16 @@ void inport_event_reverse(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp
 	// FGN_PRINT_INT("in_msg->type", in_msg->type);
 
 	if (in_msg->type == MSG_GENERATE) {
-		s->package_generated--;
+		tw_rand_reverse_unif(lp->rng);
 		tw_rand_reverse_unif(lp->rng);
 	}
 	else if (in_msg->type == MSG_ARRIVE) {
-		if (in_msg->content >= 0) {
-			int dest_outport = in_msg->content;
-			s->input_queue[dest_outport]--;
-		}
-		else {
-			s->package_loss--;
-		}
-	}else if (in_msg->type == MSG_GRANT) {
+		s->package_generated--;
+		s->package_waiting--;
+		int dest_outport = in_msg->content;
+		s->input_queue[dest_outport]--;
+	}
+	else if (in_msg->type == MSG_GRANT) {
 		int granter = in_msg->content;
 		s->granter[granter] = 0;
 	}
@@ -217,6 +223,10 @@ void inport_event_reverse(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp
 		int accept_port = in_msg->content;
 		s->input_queue[accept_port]++;
 		s->last_accept = in_msg->history;
+		s->package_waiting++;
+	}
+	else if (in_msg->type == MSG_COUNT_WAITING) {
+		s->total_avg_package_waiting = in_msg->history;
 	}
 	else if (in_msg->type == MSG_SAMPLING_TRIGGER) {
 		// nothing need to do

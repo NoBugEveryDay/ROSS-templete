@@ -7,7 +7,7 @@
 extern tw_lpid global_lp_num_useful, global_lp_num_all;
 extern unsigned int nlp_per_kp;
 extern unsigned int switch_port_num;
-extern unsigned int switch_input_buffer_size;
+extern double switch_load;
 extern double sampling_step;
 
 // defined in islip_map.c
@@ -33,6 +33,7 @@ typedef enum {
 	MSG_ACCEPT_TRIGGER,
 	MSG_ACCEPT_PREPARE,
 	MSG_ACCEPT,
+	MSG_COUNT_WAITING,
 	MSG_SAMPLING_TRIGGER,
 	MSG_SAMPLING_PREPARE,
 	MSG_SAMPLING,
@@ -54,7 +55,8 @@ typedef struct {
 typedef struct {
 	tw_lpid typeid;
 	int num_in_type;
-	long long package_generated, package_loss;
+	long long package_generated, package_waiting;
+	long long total_avg_package_waiting;
 	int *input_queue;
 	char *granter; // Outports who grant to this inport
 	int last_accept;

@@ -114,15 +114,15 @@ st_model_types islip_sampling_types[] = {
 
 //Define command line arguments default values
 unsigned int switch_port_num = 16;
-unsigned int switch_input_buffer_size = 16;
-double sampling_step = 1000;
+double switch_load = 0.9;
+double sampling_step = 0;
 
 //add your command line opts
 const tw_optdef model_opts[] = {
 	TWOPT_GROUP("ROSS Model"),
 	TWOPT_UINT("switch_port_num", switch_port_num, "Port num of simulated switch"),
-	TWOPT_UINT("switch_input_buffer_size", switch_input_buffer_size, "Buffer size of each virtual queue of each input port of simulated switch"),
-	TWOPT_DOUBLE("sampling_step", sampling_step, "Sampling every sampling_step virtual time"),
+	TWOPT_DOUBLE("switch_load", switch_load, "The load of simulated switch"),
+	TWOPT_DOUBLE("sampling_step", sampling_step, "Sampling every sampling_step virtual time. sampling_step<=0 means do NOT sampling"),
 	TWOPT_END(),
 };
 
@@ -197,29 +197,6 @@ int model_main (int argc, char* argv[]) {
 	}
 
 	tw_run();
-
-	long long local_package_generated = 0, local_package_loss = 0;
-	double local_max_lvt = 0;
-	for (int p = 0 ; p < g_tw_nlp; p++) {
-		tw_lp *lp = g_tw_lp[p];
-		if (lp_type_dict[lp->gid] == INPORT_TYPE) {
-			inport_state *state = (inport_state*)lp->cur_state;
-			local_package_generated += state->package_generated;
-			local_package_loss += state->package_loss;
-			// printf("%d : %lld/%lld\n", state->num_in_type, state->package_loss, state->package_generated);
-		}
-		local_max_lvt = local_max_lvt > tw_now(lp) ? local_max_lvt : tw_now(lp);
-	}
-	
-	long long global_package_generated = 0, global_package_loss = 0;
-	double global_max_lvt= 0;
-	MPI_Allreduce(&local_package_generated, &global_package_generated, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
-	MPI_Allreduce(&local_package_loss, &global_package_loss, 1, MPI_LONG_LONG_INT, MPI_SUM, MPI_COMM_WORLD);
-	MPI_Allreduce(&local_max_lvt, &global_max_lvt, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-	if (g_tw_mynode == 0) {
-		printf("Loss : %lf%%\n", (double)global_package_loss/global_package_generated*100);
-		printf("global_max_lvt = %lf\n", global_max_lvt);
-	}
 	
 	tw_end();
 
