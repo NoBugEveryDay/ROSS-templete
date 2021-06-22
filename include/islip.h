@@ -8,7 +8,7 @@ extern tw_lpid global_lp_num_useful, global_lp_num_all;
 extern unsigned int nlp_per_kp;
 extern unsigned int switch_port_num;
 extern double switch_load;
-extern double sampling_step;
+extern double sampling_step, stop_diff;
 
 // defined in islip_map.c
 extern tw_lpid *lp_type_dict;

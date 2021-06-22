@@ -116,6 +116,7 @@ st_model_types islip_sampling_types[] = {
 unsigned int switch_port_num = 16;
 double switch_load = 0.9;
 double sampling_step = 0;
+double stop_diff = 0.001;
 
 //add your command line opts
 const tw_optdef model_opts[] = {
@@ -123,6 +124,7 @@ const tw_optdef model_opts[] = {
 	TWOPT_UINT("switch_port_num", switch_port_num, "Port num of simulated switch"),
 	TWOPT_DOUBLE("switch_load", switch_load, "The load of simulated switch"),
 	TWOPT_DOUBLE("sampling_step", sampling_step, "Sampling every sampling_step virtual time. sampling_step<=0 means do NOT sampling"),
+	TWOPT_DOUBLE("stop_diff", stop_diff, "It must use with --sampling_step. Stop simulation when avg cell latency diff is smaller than stop_diff for adjacent sampling step."),
 	TWOPT_END(),
 };
 
@@ -197,10 +199,9 @@ int model_main (int argc, char* argv[]) {
 	}
 
 	tw_run();
-	
-	tw_end();
 
 	FGN_STEP_OUT_FUNC();
-
+	
+	tw_end();
 	return 0;
 }

@@ -38,6 +38,7 @@ run : all
 			--synch=5 `# OPTIMISTIC_REALTIME=5` \
 			--nkp=4 `# num of kernel process in each process` \
 			--gvt-interval=100 `# the amount of real time in milliseconds between GVT computations for --synch=5` \
+			--max-opt-lookahead=1 `# maximum lookahead allowed in virtual clock time` \
 		`# Simulation Setting` \
 			--end=10000 `# End time for Simulation` \
 			--extramem=1000000 `# Enlarge it untill no extramem errors` \

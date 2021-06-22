@@ -47,8 +47,8 @@ void send_event(
 	tw_stime offset_ts, 
 	tw_lp *sender,
 	message_type msg_type,
-	int content,	// -1 means nothing else need to transfer
-	int history		// -1 means no history need to record
+	long long content,	// -1 means nothing else need to transfer
+	long long history		// -1 means no history need to record
 	) {
 	
 	tw_event *e = tw_event_new(dest_gid, offset_ts, sender);
@@ -178,9 +178,23 @@ void inport_event(inport_state *s, tw_bf *bf, message *in_msg, tw_lp *lp) {
 		s->reduce[1] += in_msg->history;
 	}
 	else if (in_msg->type == MSG_SAMPLING) {
-		tw_output(lp, "Avg Cell Latency @ %lf : %lf\n", tw_now(lp), (double)s->reduce[0]/(double)s->reduce[1]);
-		send_event(lp->gid, 0.01, lp, MSG_SAMPLING_CLEAN, (double)s->reduce[0], s->reduce[1]);
-		send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, -1, -1);
+		if (in_msg->history == -2) {
+			MPI_Abort(MPI_COMM_WORLD, 0);
+		}
+		double avg_cell_latency = (double)s->reduce[0]/(double)s->reduce[1];
+		double diff = avg_cell_latency / ((double)in_msg->content/(double)in_msg->history) -1;
+		diff = diff < 0 ? -diff : diff;
+		if (in_msg->history != -1 && diff < stop_diff) {
+			tw_output(lp, "STABLE! diff=%lf%% Avg Cell Latency @ %lf :%lf\n", diff*100, tw_now(lp), avg_cell_latency);
+			send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, -2, -2);
+		}
+		else {
+			tw_output(lp, "Avg Cell Latency @ %lf : %lf\tdiff=%lf%%\n", tw_now(lp), avg_cell_latency, diff*100);
+			send_event(lp->gid, sampling_step, lp, MSG_SAMPLING, s->reduce[0], s->reduce[1]);
+		}
+		
+		send_event(lp->gid, 0.01, lp, MSG_SAMPLING_CLEAN, s->reduce[0], s->reduce[1]);
+		
 	}
 	else if (in_msg->type == MSG_SAMPLING_CLEAN) {
 		s->reduce[0] = 0;
