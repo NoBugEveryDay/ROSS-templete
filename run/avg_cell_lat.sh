@@ -2,6 +2,10 @@
 
 # This script is used to calculate the average cell latency 
 # under different port number and load.
+# I'm sorry that this script can't get all the results.
+# You have to adjust the parameters to get all the results.
+# One of the biggest flaw of this product is that it counts average cell latency at the warmup stage,
+# which make it hard to converge.
 
 OUTPUT_FILE=avg_cell_lat_result.dat
 
